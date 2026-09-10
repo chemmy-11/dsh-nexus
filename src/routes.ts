@@ -2,11 +2,11 @@
  * @dsh-external/dsh-nexus — observation REST routes (host half).
  * GET  /api/nexus/state          → panel snapshot (totals / today / week / recent edit stream)
  * POST /api/nexus/action         → { kind: 'rescan' } triggers a full scan
- * GET  /api/nexus/m2/state       → L 场读数（latest / totals / curve points / recent；?root=archive → 归档视图）
+ * GET  /api/nexus/m2/state       → L 场读数（latest / totals / curve points / recent；?root=all → 全局视图）
  * GET  /api/nexus/m2/annotations → 预言检验表标注
  * POST /api/nexus/m2/annotations → upsert 标注（prophecy 唯一）
  * GET  /api/nexus/lfield         → L 场读数独立指向（M4-L；known 桶/会话计数）
- * POST /api/nexus/lfield         → 切换 L 场读数指向（采集归属；归档不可逆）
+ * POST /api/nexus/lfield         → 切换 L 场读数指向（采集归属；既有会话归属不变）
  * Same-origin marker guard; registered as effect.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -154,10 +154,10 @@ export function registerNexusRoutes(ctx: { webServer: { register(route: WebRoute
       if (!browserSameOriginMarker(req)) return json(res, 403, { ok: false, error: 'forbidden' })
       const historyDays = deps.m2HistoryDays ?? 30
       const fromTs = Date.now() - historyDays * 86400000
-      // M4-L：视图口径——?root=archive → 归档桶；?root=all → 全局（不过滤归属）；默认 = 当前 L 场指向
+      // M4.11：视图两态——?root=all → 全局（不过滤归属）；默认 = 当前 L 场指向（vault 会话）
       const url = new URL(String(req.url ?? ''), 'http://localhost')
       const rv = url.searchParams.get('root')
-      const root: string | undefined = rv === 'archive' ? '' : rv === 'all' ? undefined : deps.store.lfieldRoot()
+      const root: string | undefined = rv === 'all' ? undefined : deps.store.lfieldRoot()
       const points = deps.store.turnReadsSince(fromTs, root)
       const latest = points.length > 0 ? points[points.length - 1] : null
       const totals = deps.store.turnTotals(root)
@@ -169,8 +169,6 @@ export function registerNexusRoutes(ctx: { webServer: { register(route: WebRoute
         revision: Date.now(),
         activeRoot: root ?? null,
         pointing: deps.store.lfieldRoot(),
-        baselineTs: deps.store.lfieldBaseline() || null,
-        archiveTurns: deps.store.turnTotals('').turns,
         sessionMeta: deps.store.sessionMeta(),
         selfcheck: deps.store.selfcheckCoverage(root),
         latest,
@@ -243,7 +241,7 @@ export function registerNexusRoutes(ctx: { webServer: { register(route: WebRoute
     },
   }
 
-  // M3-F.3：白盒探索性分析（S 形/爆发段/τ_e；口径=镜 OQ-M2-1/2 裁决；M4-L 同 ?root=archive 归桶）
+  // M3-F.3：白盒探索性分析（S 形/爆发段/τ_e；口径=镜 OQ-M2-1/2 裁决；视图口径同 m2/state）
   const analysis: WebRoute = {
     kind: 'exact',
     path: `${API_PREFIX}/m2/analysis`,
@@ -254,7 +252,7 @@ export function registerNexusRoutes(ctx: { webServer: { register(route: WebRoute
       const fromTs = Date.now() - historyDays * 86400000
       const url = new URL(String(req.url ?? ''), 'http://localhost')
       const rv = url.searchParams.get('root')
-      const root: string | undefined = rv === 'archive' ? '' : rv === 'all' ? undefined : deps.store.lfieldRoot()
+      const root: string | undefined = rv === 'all' ? undefined : deps.store.lfieldRoot()
       const rows = deps.store.turnReadsSince(fromTs, root)
       const results = analyze(rows)
       json(res, 200, { revision: Date.now(), results })

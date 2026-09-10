@@ -53,7 +53,7 @@ export class TurnsCollector {
   constructor(private readonly store: NexusStore) {}
 
   handle(sessionId: string, ev: TurnEventLike, cwd?: string): void {
-    // M4-L：会话首次落点 → 分类归属（cwd 在指向根下 = 知识库会话；否则归档桶）
+    // M4-L：会话首次落点 → 分类归属（cwd 在指向根下 = vault 会话；否则 '' = 不属于任何指向，只在全局视图出现）
     if (!this.stamped.has(sessionId)) {
       this.stamped.add(sessionId)
       this.store.classifySessionRoot(sessionId, cwd, typeof ev.time === 'number' ? ev.time : Date.now())

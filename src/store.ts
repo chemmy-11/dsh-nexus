@@ -2,8 +2,8 @@
  * @dsh-external/dsh-nexus — nexus.db (SQLite, node:sqlite, zero deps).
  * vault_meta: file metadata baseline; edit_event: edit operations (only fs.watch channel writes).
  * turn_read/turn_text/annotation: M2/M3 L-field readings (session/event feed).
- * session_root: M4-L per-session L-field ownership ('' = pre-pointing archive bucket);
- * lfield_config: M4-L independent L-field pointing (single row).
+ * session_root: M4-L per-session L-field ownership ('' = owned by no pointing — global view only);
+ * lfield_config: M4-L independent L-field pointing (single row; baseline_ts kept as legacy, no longer read).
  * Idempotency: edit_event.session_key unique (debounce window key) — no double counting on reload/restart.
  */
 import { DatabaseSync } from 'node:sqlite'
@@ -224,7 +224,7 @@ export class NexusStore {
 
   /**
    * M4-L 迁移（user_version 1→2，2026-08-31 定稿）：L 场读数独立指向 + 归档——
-   * 既有会话（指向制前）整体归入 '' 归档桶（守谷人定稿：归档=目前全部数据，
+   * 既有会话（指向制前）整体归入 '' 桶（守谷人定稿：= 目前全部数据；M4.11 起该桶语义为「不属于任何指向」，不再是视图，
    * 与指向后的知识库会话两类分开处理）；lfield_config 种子 = 迁移时 vault 指向。
    */
   private migrateV2(): void {
@@ -319,13 +319,7 @@ export class NexusStore {
     return r === undefined ? '' : String(r.root)
   }
 
-  /** 指向制前 epoch 基线（毫秒时刻；0 = 无基线）——面板划代注记用。 */
-  lfieldBaseline(): number {
-    const r = this.db.prepare('SELECT baseline_ts FROM lfield_config WHERE id = 1').get() as { baseline_ts: number | null } | undefined
-    return r?.baseline_ts === null || r?.baseline_ts === undefined ? 0 : Number(r.baseline_ts)
-  }
-
-  /** 切换 L 场读数指向（采集从此归入新根；既有会话归属不变——归档不可逆）。 */
+  /** 切换 L 场读数指向（采集从此归入新根；既有会话归属不变）。 */
   setLfieldRoot(root: string): void {
     this.db.prepare(`
       INSERT INTO lfield_config (id, root, updated_at) VALUES (1, ?, ?)
@@ -334,8 +328,8 @@ export class NexusStore {
   }
 
   /**
-   * 会话首次落点分类（守谷人 2026-08-31 定稿）：cwd 在当前 L 场指向根之下（含等于）
-   * → 知识库会话，归指向根；否则 → '' 归档桶。INSERT OR IGNORE——首标定终身，不因后续改写。
+   * 会话首次落点分类（守谷人 2026-08-31 定稿；2026-09 口径修订保留）：cwd 在当前 L 场指向根之下（含等于）
+   * → vault 会话，归指向根；否则 → ''（不属于任何指向，只在全局视图出现）。INSERT OR IGNORE——首标定终身，不因后续改写。
    */
   classifySessionRoot(session: string, cwd: string | undefined, ts: number): void {
     const root = this.lfieldRoot()
@@ -352,7 +346,7 @@ export class NexusStore {
     return c === r || c.startsWith(r + '\\')
   }
 
-  /** 各归属桶的会话数（键含 '' 归档桶）。 */
+  /** 各归属的会话数（键含 '' = 不属于任何指向）。 */
   sessionRootCounts(): Record<string, number> {
     const rows = this.db.prepare('SELECT root, COUNT(*) AS n FROM session_root GROUP BY root').all() as Array<{ root: string; n: number }>
     const out: Record<string, number> = {}

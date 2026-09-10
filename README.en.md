@@ -18,17 +18,17 @@ Turning "how far a conversation moved the knowledge base" into numbers — **ses
 - **Metric definitions**: tokens (input/output/cache-hit), cache hit & miss rates (miss rate = the A projection), TPS & decode time, and a per-turn subjective clarity self-rating (0–1) — **objective and subjective tracks cross-validate each other, bounding each side's bias** (the objective curve is confounded by cache warm-up and novel topics; self-reports by reporting bias);
 - **Direct official-event capture**: subscribes to the host's `session/event` (**zero host-source modifications, no third-party plugin dependencies**), with data isolated in a private directory (`~/.dsh/nexus/`, SQLite);
 - **Two-tab dashboard**: SVG curves with **zoom, filtering (time window / session) and per-turn Q&A replay** (full transcript of any turn);
-- **Repeatable analysis pipeline**: shape classification (sigmoid / rising / falling / inverse-sigmoid) · characteristic-time (τ_e) detection · bucketed comparison — first run: **knowledge-base sessions show a 13.7% miss rate vs 5.6% for archived sessions**, consistent with knowledge work's higher exploration density;
+- **Repeatable analysis pipeline**: shape classification (sigmoid / rising / falling / inverse-sigmoid) · characteristic-time (τ_e) detection · bucketed comparison — first run: **vault sessions show a 13.7% miss rate vs 5.6% for non-pointed workspaces**, consistent with knowledge work's higher exploration density;
 - **Self-review coverage**: per-session coverage badge (assessed / total turns + missing turn numbers), warning below 80%;
 - **Hypothesis board**: P1–P9 annotations (pending / investigating / verified) with analysis conclusions written back.
 
 > "L-field" is the author's personal research framing (L-theory); external readers can treat this panel simply as a **session-level LLM observability dashboard** — the metrics themselves (tokens / cache / TPS / self-review) are standard observability quantities.
 
-## Pointing & epochs
+## Pointing & views
 
 - The plugin keeps two **independent pointings**: the **vault pointing** (observation target) and the **L-field pointing** (the vault root a session belongs to), both confirmable/switchable in the panel (double confirmation, history never deleted);
-- Session attribution rule: **the workspace a session was initiated in** — sessions started inside the pointed vault's workspace form the pointing bucket, everything else is archived; historical sessions are back-filled by the same rule;
-- Three dashboard views: **current pointing** (knowledge-base sessions) / **dsh global sessions** (all workspaces) / **archive** (baseline) — comparative analysis is a view switch.
+- Session attribution rule: **the workspace a session was initiated in** — sessions started inside the pointed vault's workspace form the vault view; everything else appears only in the global view; historical sessions are back-filled by the same rule;
+- Two dashboard views: **global** (all workspaces) / **〈vault short name〉** (sessions initiated in the pointed workspace) — comparative analysis is a view switch.
 
 ## Installation
 
@@ -56,7 +56,7 @@ Config example (in the profile's `cordis.patch.yml`; `vaultRoot` is optional —
 |---|---|
 | `GET /api/nexus/state` | vault totals / today / week / recent edit stream |
 | `GET/POST /api/nexus/vault` | vault pointing status / switch |
-| `GET /api/nexus/m2/state` | session readings (latest / totals / curve / selfcheck coverage; `?root=archive\|all` switches views) |
+| `GET /api/nexus/m2/state` | session readings (latest / totals / curve / selfcheck coverage; `?root=all` switches to the global view) |
 | `GET/POST /api/nexus/m2/annotations` | hypothesis annotations read/write |
 | `GET /api/nexus/m2/turn-text` | full Q&A transcript of a turn |
 | `GET /api/nexus/m2/analysis` | white-box analysis (sigmoid / bursts / τ_e) |
@@ -83,7 +83,7 @@ The build chain is pure Node (`scripts/prepare.mjs` + `scripts/build-client.mjs`
 - **Independently installable**: depends only on official `cordis`/`schemastery`/`dsh-host-webserver`, coupled to no other plugin;
 - **Observation leaves traces**: edit events and session readings accumulate forward from deployment (SQLite persistence — no loss, no double-counting across restarts/reloads);
 - **Boundary awareness**: read-only against the vault, data kept private (never written into the vault, never mixed with other data sources);
-- **Epochs never mix**: sessions are attributed by their initiating workspace; the knowledge-base epoch and the archived baseline are analyzed separately.
+- **Attribution never mixes**: sessions are attributed by their initiating workspace; vault sessions and other workspaces are analyzed separately (one classification rule, no time-based epochs).
 
 ## Security note
 

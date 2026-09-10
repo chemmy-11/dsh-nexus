@@ -1,4 +1,5 @@
-// M4-A 分析报告（可重复运行）：node scripts/analysis-report.mjs [all|archive|pointing]
+// M4-A 分析报告（可重复运行）：node scripts/analysis-report.mjs [all|pointing]
+// M4.11：视图两态（全局 / vault 指向）——归档口径下线。
 // 复用插件 analyze() 管线（lib/analysis.js）+ 全局聚合，产出简历可引用的参数集。
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
@@ -10,7 +11,10 @@ const db = new DatabaseSync(join(homedir(), '.dsh', 'nexus', 'nexus.db'))
 
 let where = ''
 const params = []
-if (scope === 'archive') where = "AND session IN (SELECT session FROM session_root WHERE root = '')"
+if (scope !== 'all' && scope !== 'pointing') {
+  console.error(`未知口径：${scope}（可用：all | pointing）`)
+  process.exit(1)
+}
 if (scope === 'pointing') {
   const root = db.prepare('SELECT root FROM lfield_config WHERE id = 1').get().root
   where = 'AND session IN (SELECT session FROM session_root WHERE root = ?)'
@@ -86,6 +90,6 @@ if (scope === 'all') {
     FROM session_root sr JOIN turn_read tr ON tr.session = sr.session
     GROUP BY sr.root
   `).all()
-  console.log(`自评分桶覆盖（M4-B 对照）: ${cov.map((r) => `${r.root === '' ? 'archive(指令前)' : 'pointing(KB)'} ${(100 * Number(r.checked) / Number(r.total)).toFixed(1)}% (${r.checked}/${r.total})`).join(' · ')}`)
+  console.log(`自评覆盖对照（M4-B；差异主要来自工作区——自评指令只写在 vault 的 AGENTS.md 里）: ${cov.map((r) => `${r.root === '' ? '非指向工作区' : 'vault 指向'} ${(100 * Number(r.checked) / Number(r.total)).toFixed(1)}% (${r.checked}/${r.total})`).join(' · ')}`)
 }
 db.close()

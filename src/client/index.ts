@@ -37,8 +37,6 @@ type M2State = {
   revision: number
   activeRoot: string | null
   pointing: string
-  baselineTs: number | null
-  archiveTurns: number
   sessionMeta: Record<string, { startTs: number; turns: number }>
   selfcheck: { checked: number; total: number; bySession: Record<string, { checked: number; total: number; missing: number[] }> }
   latest: M2Point | null
@@ -528,7 +526,7 @@ function NexusView(): ReactNode {
 function NexusLFieldView(): ReactNode {
   const [state, setState] = useState<M2State | null>(null)
   const [lfield, setLfield] = useState<LfieldInfo | null>(null)
-  const [viewMode, setViewMode] = useState<'active' | 'archive' | 'all'>('active')
+  const [viewMode, setViewMode] = useState<'vault' | 'all'>('vault')
   const [ann, setAnn] = useState<AnnotationsState | null>(null)
   const [failed, setFailed] = useState(false)
   const [axis, setAxis] = useState<'date' | 'turn'>('date')
@@ -543,8 +541,8 @@ function NexusLFieldView(): ReactNode {
   injectStyle()
   useHideComposer()
 
-  // M4-L：视图口径——?root=archive 归档 | ?root=all 全局 | 默认 = 当前 L 场指向
-  const viewQ = viewMode === 'archive' ? '?root=archive' : viewMode === 'all' ? '?root=all' : ''
+  // M4.11：视图两态——?root=all 全局（全部工作区）| 默认 = 当前 vault 指向
+  const viewQ = viewMode === 'all' ? '?root=all' : ''
   const load = (): void => {
     fetch(`/api/nexus/m2/state${viewQ}`, { headers: { 'sec-fetch-site': 'same-origin' } })
       .then((r) => (r.ok ? (r.json() as Promise<M2State>) : Promise.resolve(null)))
@@ -604,10 +602,6 @@ function NexusLFieldView(): ReactNode {
     const d = new Date(m.startTs)
     return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())} · ${m.turns}轮`
   }
-  const fmtDayMin = (ts: number): string => {
-    const d = new Date(ts)
-    return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
-  }
 
   const fromTs = Date.now() - windowDays * 86400000
   const windowed = state.curve.filter((p) => p.ts >= fromTs)
@@ -664,16 +658,16 @@ function NexusLFieldView(): ReactNode {
     }).then((r) => (r.ok ? load() : undefined)).catch(() => undefined)
   }
 
-  // M4-L：独立指向——切换仅改变「新会话」的归属；既有会话归属不变（归档不可逆）
+  // M4.11：独立指向——切换仅改变「新会话」的归属；既有会话归属不变
   const lfieldLabel = lfield === null ? '…'
     : (lfield.known.find((k) => k.root === lfield.active)?.displayName ?? baseName(lfield.active))
-  const archiveSessions = lfield?.counts[''] ?? 0
+  const vaultSessions = lfield === null || lfield.active === '' ? 0 : (lfield.counts[lfield.active] ?? 0)
   const switchLfield = (root: string): void => {
-    if (!window.confirm('切换后新会话读数归入新指向；既有会话归属不变（归档不可逆）。确认切换 L 场指向？')) return
+    if (!window.confirm('切换后新会话读数归入新指向；既有会话归属不变。确认切换 L 场指向？')) return
     fetch('/api/nexus/lfield', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ root }),
-    }).then((r) => { if (r.ok) { setViewMode('active'); load() } }).catch(() => undefined)
+    }).then((r) => { if (r.ok) { setViewMode('vault'); load() } }).catch(() => undefined)
   }
 
   return createElement('div', { className: 'xg-cards xg-grid' },
@@ -693,19 +687,14 @@ function NexusLFieldView(): ReactNode {
       createElement('span', { style: { marginLeft: 8 } }, '视图'),
       createElement('select', {
         className: 'xg-select', value: viewMode,
-        onChange: (e: { target: { value: string } }) => setViewMode(e.target.value as 'active' | 'archive' | 'all'),
+        onChange: (e: { target: { value: string } }) => setViewMode(e.target.value as 'vault' | 'all'),
       },
-        createElement('option', { value: 'active' }, '当前指向'),
-        createElement('option', { value: 'all' }, 'dsh 全局会话'),
-        createElement('option', { value: 'archive' }, `归档（${archiveSessions} 会话）`),
+        createElement('option', { value: 'vault' }, `${lfieldLabel}（${vaultSessions} 会话）`),
+        createElement('option', { value: 'all' }, '全局'),
       ),
-      viewMode === 'archive'
-        ? createElement('span', { className: 'xg-warn' }, '归档视图——非知识库会话历史。')
-        : viewMode === 'all'
-          ? createElement('span', { className: 'xg-label' }, '全局视图——全部工作区会话（归档 + 指向）。')
-          : (state.baselineTs
-              ? createElement('span', { className: 'xg-label' }, `基线 ${fmtDayMin(state.baselineTs)}（此前＝归档历史；此后＝在工作区发起的知识库会话）`)
-              : null),
+      viewMode === 'all'
+        ? createElement('span', { className: 'xg-label' }, '全局视图——全部工作区会话（含 vault 会话）。')
+        : createElement('span', { className: 'xg-label' }, `vault 视图——在 ${lfieldLabel} 工作区发起的会话。`),
     ),
     createElement('div', { className: 'xg-span3' },
     Card({
@@ -733,7 +722,7 @@ function NexusLFieldView(): ReactNode {
     ),
     createElement('div', { className: 'xg-span3' },
     Card({
-      title: `总量 · ${viewMode === 'archive' ? '归档' : viewMode === 'all' ? '全局' : '当前指向'}`,
+      title: `总量 · ${viewMode === 'all' ? '全局' : lfieldLabel}`,
       children: createElement('div', { className: 'xg-row' },
         Kv({ label: '轮次', value: String(t.turns) }),
         Kv({ label: '输入（命中/未命中）', value: `${fmtK(t.cacheRead)} / ${fmtK(t.missToken)}` }),
